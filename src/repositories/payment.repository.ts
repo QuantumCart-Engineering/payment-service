@@ -1,6 +1,11 @@
-import { ResultSetHeader, RowDataPacket } from "mysql2";
+import {
+    PoolConnection,
+    ResultSetHeader,
+    RowDataPacket
+} from "mysql2/promise";
 
 import { dbPool } from "../config/database";
+
 import {
     Payment,
     PaymentMethod,
@@ -31,15 +36,20 @@ interface PaymentRow extends RowDataPacket {
 }
 
 export class PaymentRepository {
+
     async create(
         orderId: string,
         amount: number,
         currency: string,
         paymentMethod: PaymentMethod,
-        provider: string
+        provider: string,
+        connection?: PoolConnection
     ): Promise<number> {
+
+        const executor = connection ?? dbPool;
+
         const [result] =
-            await dbPool.execute<ResultSetHeader>(
+            await executor.execute<ResultSetHeader>(
                 CREATE_PAYMENT,
                 [
                     orderId,
@@ -54,10 +64,14 @@ export class PaymentRepository {
     }
 
     async findById(
-        paymentId: number
+        paymentId: number,
+        connection?: PoolConnection
     ): Promise<Payment | null> {
+
+        const executor = connection ?? dbPool;
+
         const [rows] =
-            await dbPool.execute<PaymentRow[]>(
+            await executor.execute<PaymentRow[]>(
                 FIND_PAYMENT_BY_ID,
                 [paymentId]
             );
@@ -70,10 +84,14 @@ export class PaymentRepository {
     }
 
     async findByOrderId(
-        orderId: string
+        orderId: string,
+        connection?: PoolConnection
     ): Promise<Payment | null> {
+
+        const executor = connection ?? dbPool;
+
         const [rows] =
-            await dbPool.execute<PaymentRow[]>(
+            await executor.execute<PaymentRow[]>(
                 FIND_PAYMENT_BY_ORDER_ID,
                 [orderId]
             );
@@ -87,14 +105,15 @@ export class PaymentRepository {
 
     async updateStatus(
         paymentId: number,
-        status: PaymentStatus
+        status: PaymentStatus,
+        connection?: PoolConnection
     ): Promise<void> {
-        await dbPool.execute(
+
+        const executor = connection ?? dbPool;
+
+        await executor.execute(
             UPDATE_PAYMENT_STATUS,
-            [
-                status,
-                paymentId
-            ]
+            [status, paymentId]
         );
     }
 
@@ -102,9 +121,13 @@ export class PaymentRepository {
         paymentId: number,
         providerPaymentId: string | null,
         failureCode: string | null,
-        failureReason: string | null
+        failureReason: string | null,
+        connection?: PoolConnection
     ): Promise<void> {
-        await dbPool.execute(
+
+        const executor = connection ?? dbPool;
+
+        await executor.execute(
             UPDATE_PAYMENT_PROVIDER_DETAILS,
             [
                 providerPaymentId,
@@ -115,9 +138,7 @@ export class PaymentRepository {
         );
     }
 
-    private toEntity(
-        row: PaymentRow
-    ): Payment {
+    private toEntity(row: PaymentRow): Payment {
         return {
             id: row.id,
             orderId: row.order_id,
@@ -126,16 +147,11 @@ export class PaymentRepository {
             paymentMethod: row.payment_method,
             status: row.status,
             provider: row.provider,
-            providerPaymentId:
-                row.provider_payment_id,
-            failureCode:
-                row.failure_code,
-            failureReason:
-                row.failure_reason,
-            createdAt:
-                row.created_at,
-            updatedAt:
-                row.updated_at
+            providerPaymentId: row.provider_payment_id,
+            failureCode: row.failure_code,
+            failureReason: row.failure_reason,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
         };
     }
 }

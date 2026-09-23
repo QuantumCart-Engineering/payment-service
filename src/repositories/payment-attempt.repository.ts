@@ -1,7 +1,8 @@
 import {
+    PoolConnection,
     ResultSetHeader,
     RowDataPacket
-} from "mysql2";
+} from "mysql2/promise";
 
 import { dbPool } from "../config/database";
 
@@ -18,8 +19,7 @@ import {
     UPDATE_PAYMENT_ATTEMPT_PROVIDER_DETAILS
 } from "../queries/payment-attempt.queries";
 
-interface PaymentAttemptRow
-    extends RowDataPacket {
+interface PaymentAttemptRow extends RowDataPacket {
     id: number;
     payment_id: number;
     attempt_number: number;
@@ -33,13 +33,18 @@ interface PaymentAttemptRow
 }
 
 export class PaymentAttemptRepository {
+
     async create(
         paymentId: number,
         attemptNumber: number,
-        provider: string
+        provider: string,
+        connection?: PoolConnection
     ): Promise<number> {
+
+        const executor = connection ?? dbPool;
+
         const [result] =
-            await dbPool.execute<ResultSetHeader>(
+            await executor.execute<ResultSetHeader>(
                 CREATE_PAYMENT_ATTEMPT,
                 [
                     paymentId,
@@ -52,12 +57,14 @@ export class PaymentAttemptRepository {
     }
 
     async findLatestByPaymentId(
-        paymentId: number
+        paymentId: number,
+        connection?: PoolConnection
     ): Promise<PaymentAttempt | null> {
+
+        const executor = connection ?? dbPool;
+
         const [rows] =
-            await dbPool.execute<
-                PaymentAttemptRow[]
-            >(
+            await executor.execute<PaymentAttemptRow[]>(
                 FIND_LATEST_PAYMENT_ATTEMPT,
                 [paymentId]
             );
@@ -70,12 +77,14 @@ export class PaymentAttemptRepository {
     }
 
     async findByPaymentId(
-        paymentId: number
+        paymentId: number,
+        connection?: PoolConnection
     ): Promise<PaymentAttempt[]> {
+
+        const executor = connection ?? dbPool;
+
         const [rows] =
-            await dbPool.execute<
-                PaymentAttemptRow[]
-            >(
+            await executor.execute<PaymentAttemptRow[]>(
                 FIND_PAYMENT_ATTEMPTS,
                 [paymentId]
             );
@@ -87,14 +96,15 @@ export class PaymentAttemptRepository {
 
     async updateStatus(
         attemptId: number,
-        status: PaymentAttemptStatus
+        status: PaymentAttemptStatus,
+        connection?: PoolConnection
     ): Promise<void> {
-        await dbPool.execute(
+
+        const executor = connection ?? dbPool;
+
+        await executor.execute(
             UPDATE_PAYMENT_ATTEMPT_STATUS,
-            [
-                status,
-                attemptId
-            ]
+            [status, attemptId]
         );
     }
 
@@ -102,9 +112,13 @@ export class PaymentAttemptRepository {
         attemptId: number,
         providerPaymentId: string | null,
         failureCode: string | null,
-        failureReason: string | null
+        failureReason: string | null,
+        connection?: PoolConnection
     ): Promise<void> {
-        await dbPool.execute(
+
+        const executor = connection ?? dbPool;
+
+        await executor.execute(
             UPDATE_PAYMENT_ATTEMPT_PROVIDER_DETAILS,
             [
                 providerPaymentId,
@@ -118,23 +132,20 @@ export class PaymentAttemptRepository {
     private toEntity(
         row: PaymentAttemptRow
     ): PaymentAttempt {
+
         return {
             id: row.id,
             paymentId: row.payment_id,
-            attemptNumber:
-                row.attempt_number,
+            attemptNumber: row.attempt_number,
             status: row.status,
             provider: row.provider,
             providerPaymentId:
                 row.provider_payment_id,
-            failureCode:
-                row.failure_code,
+            failureCode: row.failure_code,
             failureReason:
                 row.failure_reason,
-            createdAt:
-                row.created_at,
-            updatedAt:
-                row.updated_at
+            createdAt: row.created_at,
+            updatedAt: row.updated_at
         };
     }
 }

@@ -1,7 +1,8 @@
 import {
+    PoolConnection,
     ResultSetHeader,
     RowDataPacket
-} from "mysql2";
+} from "mysql2/promise";
 
 import { dbPool } from "../config/database";
 
@@ -16,21 +17,28 @@ import {
 
 interface PaymentIdempotencyRow
     extends RowDataPacket {
+
     id: number;
     idempotency_key: string;
     payment_id: number;
     request_hash: string;
-    response: string;
+    response: string | Record<string, unknown>;
     created_at: Date;
     expires_at: Date;
 }
 
 export class PaymentIdempotencyRepository {
+
     async findByKey(
-        idempotencyKey: string
+        idempotencyKey: string,
+        connection?: PoolConnection
     ): Promise<PaymentIdempotency | null> {
+
+        const executor =
+            connection ?? dbPool;
+
         const [rows] =
-            await dbPool.execute<
+            await executor.execute<
                 PaymentIdempotencyRow[]
             >(
                 FIND_PAYMENT_IDEMPOTENCY_BY_KEY,
@@ -49,10 +57,15 @@ export class PaymentIdempotencyRepository {
         paymentId: number,
         requestHash: string,
         response: Record<string, unknown>,
-        expiresAt: Date
+        expiresAt: Date,
+        connection?: PoolConnection
     ): Promise<number> {
+
+        const executor =
+            connection ?? dbPool;
+
         const [result] =
-            await dbPool.execute<ResultSetHeader>(
+            await executor.execute<ResultSetHeader>(
                 CREATE_PAYMENT_IDEMPOTENCY,
                 [
                     idempotencyKey,
@@ -69,6 +82,12 @@ export class PaymentIdempotencyRepository {
     private toEntity(
         row: PaymentIdempotencyRow
     ): PaymentIdempotency {
+
+        const response =
+            typeof row.response === "string"
+                ? JSON.parse(row.response)
+                : row.response;
+
         return {
             id: row.id,
             idempotencyKey:
@@ -77,8 +96,7 @@ export class PaymentIdempotencyRepository {
                 row.payment_id,
             requestHash:
                 row.request_hash,
-            response:
-                JSON.parse(row.response),
+            response,
             createdAt:
                 row.created_at,
             expiresAt:

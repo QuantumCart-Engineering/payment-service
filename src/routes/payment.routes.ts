@@ -17,12 +17,20 @@ import {
 } from "../repositories/payment-attempt.repository";
 
 import {
+    PaymentIdempotencyRepository
+} from "../repositories/payment-idempotency.repository";
+
+import {
     PaymentProviderFactory
 } from "../providers/payment-provider.factory";
 
 import {
     validateCreatePayment
 } from "../middleware/validate-payment.middleware";
+
+import {
+    requireIdempotencyKey
+} from "../middleware/idempotency.middleware";
 
 const router = Router();
 
@@ -32,6 +40,9 @@ const paymentRepository =
 const paymentAttemptRepository =
     new PaymentAttemptRepository();
 
+const paymentIdempotencyRepository =
+    new PaymentIdempotencyRepository();
+
 const paymentProvider =
     PaymentProviderFactory.create();
 
@@ -39,6 +50,7 @@ const paymentService =
     new PaymentService(
         paymentRepository,
         paymentAttemptRepository,
+        paymentIdempotencyRepository,
         paymentProvider
     );
 
@@ -50,6 +62,7 @@ const paymentController =
 router.post(
     "/",
     validateCreatePayment,
+    requireIdempotencyKey,
     paymentController.createPayment
 );
 
