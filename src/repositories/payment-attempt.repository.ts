@@ -10,6 +10,14 @@ import {
     PaymentAttemptStatus
 } from "../entities/payment-attempt.entity";
 
+import {
+    CREATE_PAYMENT_ATTEMPT,
+    FIND_LATEST_PAYMENT_ATTEMPT,
+    FIND_PAYMENT_ATTEMPTS,
+    UPDATE_PAYMENT_ATTEMPT_STATUS,
+    UPDATE_PAYMENT_ATTEMPT_PROVIDER_DETAILS
+} from "../queries/payment-attempt.queries";
+
 interface PaymentAttemptRow
     extends RowDataPacket {
     id: number;
@@ -32,15 +40,7 @@ export class PaymentAttemptRepository {
     ): Promise<number> {
         const [result] =
             await dbPool.execute<ResultSetHeader>(
-                `
-                INSERT INTO payment_attempts (
-                    payment_id,
-                    attempt_number,
-                    status,
-                    provider
-                )
-                VALUES (?, ?, 'INITIATED', ?)
-                `,
+                CREATE_PAYMENT_ATTEMPT,
                 [
                     paymentId,
                     attemptNumber,
@@ -58,23 +58,7 @@ export class PaymentAttemptRepository {
             await dbPool.execute<
                 PaymentAttemptRow[]
             >(
-                `
-                SELECT
-                    id,
-                    payment_id,
-                    attempt_number,
-                    status,
-                    provider,
-                    provider_payment_id,
-                    failure_code,
-                    failure_reason,
-                    created_at,
-                    updated_at
-                FROM payment_attempts
-                WHERE payment_id = ?
-                ORDER BY attempt_number DESC
-                LIMIT 1
-                `,
+                FIND_LATEST_PAYMENT_ATTEMPT,
                 [paymentId]
             );
 
@@ -92,22 +76,7 @@ export class PaymentAttemptRepository {
             await dbPool.execute<
                 PaymentAttemptRow[]
             >(
-                `
-                SELECT
-                    id,
-                    payment_id,
-                    attempt_number,
-                    status,
-                    provider,
-                    provider_payment_id,
-                    failure_code,
-                    failure_reason,
-                    created_at,
-                    updated_at
-                FROM payment_attempts
-                WHERE payment_id = ?
-                ORDER BY attempt_number ASC
-                `,
+                FIND_PAYMENT_ATTEMPTS,
                 [paymentId]
             );
 
@@ -121,12 +90,11 @@ export class PaymentAttemptRepository {
         status: PaymentAttemptStatus
     ): Promise<void> {
         await dbPool.execute(
-            `
-            UPDATE payment_attempts
-            SET status = ?
-            WHERE id = ?
-            `,
-            [status, attemptId]
+            UPDATE_PAYMENT_ATTEMPT_STATUS,
+            [
+                status,
+                attemptId
+            ]
         );
     }
 
@@ -137,14 +105,7 @@ export class PaymentAttemptRepository {
         failureReason: string | null
     ): Promise<void> {
         await dbPool.execute(
-            `
-            UPDATE payment_attempts
-            SET
-                provider_payment_id = ?,
-                failure_code = ?,
-                failure_reason = ?
-            WHERE id = ?
-            `,
+            UPDATE_PAYMENT_ATTEMPT_PROVIDER_DETAILS,
             [
                 providerPaymentId,
                 failureCode,
@@ -160,15 +121,20 @@ export class PaymentAttemptRepository {
         return {
             id: row.id,
             paymentId: row.payment_id,
-            attemptNumber: row.attempt_number,
+            attemptNumber:
+                row.attempt_number,
             status: row.status,
             provider: row.provider,
             providerPaymentId:
                 row.provider_payment_id,
-            failureCode: row.failure_code,
-            failureReason: row.failure_reason,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at
+            failureCode:
+                row.failure_code,
+            failureReason:
+                row.failure_reason,
+            createdAt:
+                row.created_at,
+            updatedAt:
+                row.updated_at
         };
     }
 }

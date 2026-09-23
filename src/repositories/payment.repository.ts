@@ -7,6 +7,14 @@ import {
     PaymentStatus
 } from "../entities/payment.entity";
 
+import {
+    CREATE_PAYMENT,
+    FIND_PAYMENT_BY_ID,
+    FIND_PAYMENT_BY_ORDER_ID,
+    UPDATE_PAYMENT_STATUS,
+    UPDATE_PAYMENT_PROVIDER_DETAILS
+} from "../queries/payment.queries";
+
 interface PaymentRow extends RowDataPacket {
     id: number;
     order_id: string;
@@ -32,17 +40,7 @@ export class PaymentRepository {
     ): Promise<number> {
         const [result] =
             await dbPool.execute<ResultSetHeader>(
-                `
-                INSERT INTO payments (
-                    order_id,
-                    amount,
-                    currency,
-                    payment_method,
-                    status,
-                    provider
-                )
-                VALUES (?, ?, ?, ?, 'INITIATED', ?)
-                `,
+                CREATE_PAYMENT,
                 [
                     orderId,
                     amount,
@@ -60,23 +58,7 @@ export class PaymentRepository {
     ): Promise<Payment | null> {
         const [rows] =
             await dbPool.execute<PaymentRow[]>(
-                `
-                SELECT
-                    id,
-                    order_id,
-                    amount,
-                    currency,
-                    payment_method,
-                    status,
-                    provider,
-                    provider_payment_id,
-                    failure_code,
-                    failure_reason,
-                    created_at,
-                    updated_at
-                FROM payments
-                WHERE id = ?
-                `,
+                FIND_PAYMENT_BY_ID,
                 [paymentId]
             );
 
@@ -92,23 +74,7 @@ export class PaymentRepository {
     ): Promise<Payment | null> {
         const [rows] =
             await dbPool.execute<PaymentRow[]>(
-                `
-                SELECT
-                    id,
-                    order_id,
-                    amount,
-                    currency,
-                    payment_method,
-                    status,
-                    provider,
-                    provider_payment_id,
-                    failure_code,
-                    failure_reason,
-                    created_at,
-                    updated_at
-                FROM payments
-                WHERE order_id = ?
-                `,
+                FIND_PAYMENT_BY_ORDER_ID,
                 [orderId]
             );
 
@@ -124,12 +90,11 @@ export class PaymentRepository {
         status: PaymentStatus
     ): Promise<void> {
         await dbPool.execute(
-            `
-            UPDATE payments
-            SET status = ?
-            WHERE id = ?
-            `,
-            [status, paymentId]
+            UPDATE_PAYMENT_STATUS,
+            [
+                status,
+                paymentId
+            ]
         );
     }
 
@@ -140,14 +105,7 @@ export class PaymentRepository {
         failureReason: string | null
     ): Promise<void> {
         await dbPool.execute(
-            `
-            UPDATE payments
-            SET
-                provider_payment_id = ?,
-                failure_code = ?,
-                failure_reason = ?
-            WHERE id = ?
-            `,
+            UPDATE_PAYMENT_PROVIDER_DETAILS,
             [
                 providerPaymentId,
                 failureCode,
@@ -170,10 +128,14 @@ export class PaymentRepository {
             provider: row.provider,
             providerPaymentId:
                 row.provider_payment_id,
-            failureCode: row.failure_code,
-            failureReason: row.failure_reason,
-            createdAt: row.created_at,
-            updatedAt: row.updated_at
+            failureCode:
+                row.failure_code,
+            failureReason:
+                row.failure_reason,
+            createdAt:
+                row.created_at,
+            updatedAt:
+                row.updated_at
         };
     }
 }

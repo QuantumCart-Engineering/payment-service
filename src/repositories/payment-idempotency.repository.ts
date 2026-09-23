@@ -9,6 +9,11 @@ import {
     PaymentIdempotency
 } from "../entities/payment-idempotency.entity";
 
+import {
+    FIND_PAYMENT_IDEMPOTENCY_BY_KEY,
+    CREATE_PAYMENT_IDEMPOTENCY
+} from "../queries/payment-idempotency.queries";
+
 interface PaymentIdempotencyRow
     extends RowDataPacket {
     id: number;
@@ -28,19 +33,7 @@ export class PaymentIdempotencyRepository {
             await dbPool.execute<
                 PaymentIdempotencyRow[]
             >(
-                `
-                SELECT
-                    id,
-                    idempotency_key,
-                    payment_id,
-                    request_hash,
-                    response,
-                    created_at,
-                    expires_at
-                FROM payment_idempotency
-                WHERE idempotency_key = ?
-                AND expires_at > CURRENT_TIMESTAMP
-                `,
+                FIND_PAYMENT_IDEMPOTENCY_BY_KEY,
                 [idempotencyKey]
             );
 
@@ -60,16 +53,7 @@ export class PaymentIdempotencyRepository {
     ): Promise<number> {
         const [result] =
             await dbPool.execute<ResultSetHeader>(
-                `
-                INSERT INTO payment_idempotency (
-                    idempotency_key,
-                    payment_id,
-                    request_hash,
-                    response,
-                    expires_at
-                )
-                VALUES (?, ?, ?, ?, ?)
-                `,
+                CREATE_PAYMENT_IDEMPOTENCY,
                 [
                     idempotencyKey,
                     paymentId,
@@ -89,12 +73,16 @@ export class PaymentIdempotencyRepository {
             id: row.id,
             idempotencyKey:
                 row.idempotency_key,
-            paymentId: row.payment_id,
-            requestHash: row.request_hash,
+            paymentId:
+                row.payment_id,
+            requestHash:
+                row.request_hash,
             response:
                 JSON.parse(row.response),
-            createdAt: row.created_at,
-            expiresAt: row.expires_at
+            createdAt:
+                row.created_at,
+            expiresAt:
+                row.expires_at
         };
     }
 }
