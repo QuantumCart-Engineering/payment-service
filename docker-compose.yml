@@ -1,0 +1,28 @@
+services:
+  payment-db:
+    image: mysql:8.4
+    container_name: quantumcart-payment-mysql
+    restart: unless-stopped
+
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+
+    ports:
+      - "3311:3306"
+
+    volumes:
+      - payment_mysql_data:/var/lib/mysql
+
+    networks:
+      - quantumcart-network
+
+networks:
+  quantumcart-network:
+    external: true
+
+volumes:
+  payment_mysql_data:
+    name: payment-service_payment_mysql_data
