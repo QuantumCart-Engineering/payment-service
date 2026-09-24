@@ -26,16 +26,16 @@ jobs:
         image: mysql:8.4
 
         env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_TEST_ROOT_PASSWORD }}
-          MYSQL_DATABASE: quantumcart_payments_test
-          MYSQL_USER: ${{ secrets.DB_TEST_USER }}
-          MYSQL_PASSWORD: ${{ secrets.DB_TEST_PASSWORD }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.PAYMENT_DB_NAME }}
+          MYSQL_USER: ${{ secrets.PAYMENT_DB_USER }}
+          MYSQL_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
 
         ports:
           - 3310:3306
 
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -uroot -p$MYSQL_ROOT_PASSWORD"
+          --health-cmd="mysqladmin ping -h localhost -uroot -p${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
@@ -71,15 +71,20 @@ jobs:
         run: |
           cat > .env.test <<EOF
           NODE_ENV=test
-          PORT=8005
+          PORT=8006
+
           DB_HOST=127.0.0.1
           DB_PORT=3310
-          DB_USER=${{ secrets.DB_TEST_USER }}
-          DB_PASSWORD=${{ secrets.DB_TEST_PASSWORD }}
-          DB_NAME=quantumcart_payments_test
-          DB_CONNECTION_LIMIT=10
-          DB_ROOT_USER=root
-          DB_ROOT_PASSWORD=${{ secrets.DB_TEST_ROOT_PASSWORD }}
+          DB_USER=${{ secrets.PAYMENT_DB_USER }}
+          DB_PASSWORD=${{ secrets.PAYMENT_DB_PASSWORD }}
+          DB_NAME=${{ secrets.PAYMENT_DB_NAME }}
+          DB_CONNECTION_LIMIT=5
+
+          DB_ROOT_USER=${{ secrets.PAYMENT_DB_ROOT_USER }}
+          DB_ROOT_PASSWORD=${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+
+          RABBITMQ_URL=amqp://localhost:5672
+          PAYMENT_PROVIDER=mock
           EOF
 
       # =========================
