@@ -6,7 +6,7 @@ import {
 
 import {
     IdempotencyConflictError,
-    PaymentConflictError
+    PaymentAlreadyExistsError
 } from "../utils/payment.errors";
 
 export const errorMiddleware = (
@@ -18,9 +18,11 @@ export const errorMiddleware = (
 
     console.error(error);
 
+    /*
+     * Idempotency conflict.
+     */
     if (
-        error instanceof IdempotencyConflictError ||
-        error instanceof PaymentConflictError
+        error instanceof IdempotencyConflictError
     ) {
         response.status(409).json({
             success: false,
@@ -32,15 +34,75 @@ export const errorMiddleware = (
         return;
     }
 
-    const message =
-        error instanceof Error
-            ? error.message
-            : "Internal server error";
+    /*
+     * Payment already exists for order.
+     */
+    if (
+        error instanceof PaymentAlreadyExistsError
+    ) {
+        response.status(409).json({
+            success: false,
+            error: {
+                message: error.message
+            }
+        });
 
+        return;
+    }
+
+    /*
+     * Validation / known errors which
+     * expose a statusCode.
+     */
+    if (
+        typeof error === "object" &&
+        error !== null &&
+        "statusCode" in error &&
+        typeof (
+            error as {
+                statusCode?: unknown
+            }
+        ).statusCode === "number"
+    ) {
+        const statusCode =
+            (
+                error as {
+                    statusCode: number
+                }
+            ).statusCode;
+
+        const message =
+            "message" in error &&
+            typeof (
+                error as {
+                    message?: unknown
+                }
+            ).message === "string"
+                ? (
+                    error as {
+                        message: string
+                    }
+                ).message
+                : "Request failed";
+
+        response.status(statusCode).json({
+            success: false,
+            error: {
+                message
+            }
+        });
+
+        return;
+    }
+
+    /*
+     * Unknown/unhandled error.
+     */
     response.status(500).json({
         success: false,
         error: {
-            message
+            message:
+                "Internal server error"
         }
     });
 };
