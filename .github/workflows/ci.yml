@@ -45,18 +45,19 @@ jobs:
       # =========================
       - name: Start Payment MySQL
         env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
-          MYSQL_DATABASE: ${{ secrets.PAYMENT_DB_NAME }}
-          MYSQL_USER: ${{ secrets.PAYMENT_DB_USER }}
-          MYSQL_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
+          PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
         run: |
           docker run -d \
             --name payment-mysql \
-            -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" \
-            -e MYSQL_DATABASE="$MYSQL_DATABASE" \
-            -e MYSQL_USER="$MYSQL_USER" \
-            -e MYSQL_PASSWORD="$MYSQL_PASSWORD" \
             -p 3310:3306 \
+            -e MYSQL_ROOT_PASSWORD="$PAYMENT_DB_ROOT_PASSWORD" \
+            -e MYSQL_DATABASE="$PAYMENT_DB_NAME" \
+            -e MYSQL_USER="$PAYMENT_DB_USER" \
+            -e MYSQL_PASSWORD="$PAYMENT_DB_PASSWORD" \
             mysql:8.4
 
       # =========================
@@ -64,7 +65,7 @@ jobs:
       # =========================
       - name: Wait for Payment MySQL
         env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
         run: |
           echo "Waiting for Payment MySQL..."
 
@@ -73,14 +74,14 @@ jobs:
               mysqladmin ping \
               -h 127.0.0.1 \
               -uroot \
-              -p"$MYSQL_ROOT_PASSWORD" \
+              -p"$PAYMENT_DB_ROOT_PASSWORD" \
               --silent; then
 
               echo "Payment MySQL is ready."
               exit 0
             fi
 
-            echo "MySQL is not ready yet. Attempt $i/30..."
+            echo "MySQL is not ready yet. Attempt $i/30"
             sleep 2
           done
 
@@ -101,19 +102,18 @@ jobs:
         run: |
           cat > .env.test <<EOF
           NODE_ENV=test
-          PORT=8006
+          PORT=8005
 
           DB_HOST=127.0.0.1
           DB_PORT=3310
-          DB_USER=${PAYMENT_DB_USER}
-          DB_PASSWORD=${PAYMENT_DB_PASSWORD}
-          DB_NAME=${PAYMENT_DB_NAME}
-          DB_CONNECTION_LIMIT=5
+          DB_USER=$PAYMENT_DB_USER
+          DB_PASSWORD=$PAYMENT_DB_PASSWORD
+          DB_NAME=$PAYMENT_DB_NAME
+          DB_CONNECTION_LIMIT=10
 
-          DB_ROOT_USER=${PAYMENT_DB_ROOT_USER}
-          DB_ROOT_PASSWORD=${PAYMENT_DB_ROOT_PASSWORD}
+          DB_ROOT_USER=$PAYMENT_DB_ROOT_USER
+          DB_ROOT_PASSWORD=$PAYMENT_DB_ROOT_PASSWORD
 
-          RABBITMQ_URL=amqp://localhost:5672
           PAYMENT_PROVIDER=mock
           EOF
 
@@ -135,7 +135,7 @@ jobs:
       # Integration tests
       #
       # test:integration already runs
-      # Payment migrations before Jest.
+      # database migrations before Jest.
       # =========================
       - name: Run integration tests
         env:
