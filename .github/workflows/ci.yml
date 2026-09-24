@@ -1,0 +1,128 @@
+name: Payment Service CI
+
+on:
+  push:
+    branches:
+      - dev
+      - uat
+      - master
+
+  pull_request:
+    branches:
+      - dev
+      - uat
+      - master
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+
+      # =========================
+      # Payment MySQL
+      # =========================
+      payment-mysql:
+        image: mysql:8.4
+
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_TEST_ROOT_PASSWORD }}
+          MYSQL_DATABASE: quantumcart_payments_test
+          MYSQL_USER: ${{ secrets.DB_TEST_USER }}
+          MYSQL_PASSWORD: ${{ secrets.DB_TEST_PASSWORD }}
+
+        ports:
+          - 3310:3306
+
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -p$MYSQL_ROOT_PASSWORD"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+          --health-start-period=10s
+
+    steps:
+
+      # =========================
+      # Checkout Payment Service
+      # =========================
+      - name: Checkout Payment Service
+        uses: actions/checkout@v4
+
+      # =========================
+      # Setup Node.js
+      # =========================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # =========================
+      # Install dependencies
+      # =========================
+      - name: Install Payment dependencies
+        run: npm ci
+
+      # =========================
+      # Create Payment test environment
+      # =========================
+      - name: Create Payment test environment
+        run: |
+          cat > .env.test <<EOF
+          NODE_ENV=test
+          PORT=8005
+          DB_HOST=127.0.0.1
+          DB_PORT=3310
+          DB_USER=${{ secrets.DB_TEST_USER }}
+          DB_PASSWORD=${{ secrets.DB_TEST_PASSWORD }}
+          DB_NAME=quantumcart_payments_test
+          DB_CONNECTION_LIMIT=10
+          DB_ROOT_USER=root
+          DB_ROOT_PASSWORD=${{ secrets.DB_TEST_ROOT_PASSWORD }}
+          EOF
+
+      # =========================
+      # TypeScript check
+      # =========================
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      # =========================
+      # Unit tests
+      # =========================
+      - name: Run unit tests
+        env:
+          NODE_ENV: test
+        run: npm run test:unit -- --runInBand
+
+      # =========================
+      # Integration tests
+      #
+      # test:integration already runs
+      # Payment migrations before Jest.
+      # =========================
+      - name: Run integration tests
+        env:
+          NODE_ENV: test
+        run: npm run test:integration -- --runInBand
+
+      # =========================
+      # Test coverage
+      # =========================
+      - name: Run test coverage
+        env:
+          NODE_ENV: test
+        run: npm run test:coverage -- --runInBand
+
+      # =========================
+      # Build Payment Service
+      # =========================
+      - name: Build Payment Service
+        run: npm run build
+
+      # =========================
+      # Build Docker image
+      # =========================
+      - name: Build Payment Docker image
+        run: docker build -t quantumcart-payment-service:ci .
