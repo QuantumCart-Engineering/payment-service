@@ -17,30 +17,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-
-      # =========================
-      # Payment MySQL
-      # =========================
-      payment-mysql:
-        image: mysql:8.4
-
-        env:
-          MYSQL_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
-          MYSQL_DATABASE: ${{ secrets.PAYMENT_DB_NAME }}
-          MYSQL_USER: ${{ secrets.PAYMENT_DB_USER }}
-          MYSQL_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
-
-        ports:
-          - 3310:3306
-
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost -uroot -p${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
-          --health-start-period=10s
-
     steps:
 
       # =========================
@@ -65,9 +41,63 @@ jobs:
         run: npm ci
 
       # =========================
+      # Start Payment MySQL
+      # =========================
+      - name: Start Payment MySQL
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.PAYMENT_DB_NAME }}
+          MYSQL_USER: ${{ secrets.PAYMENT_DB_USER }}
+          MYSQL_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+        run: |
+          docker run -d \
+            --name payment-mysql \
+            -e MYSQL_ROOT_PASSWORD="$MYSQL_ROOT_PASSWORD" \
+            -e MYSQL_DATABASE="$MYSQL_DATABASE" \
+            -e MYSQL_USER="$MYSQL_USER" \
+            -e MYSQL_PASSWORD="$MYSQL_PASSWORD" \
+            -p 3310:3306 \
+            mysql:8.4
+
+      # =========================
+      # Wait for Payment MySQL
+      # =========================
+      - name: Wait for Payment MySQL
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+        run: |
+          echo "Waiting for Payment MySQL..."
+
+          for i in {1..30}; do
+            if docker exec payment-mysql \
+              mysqladmin ping \
+              -h 127.0.0.1 \
+              -uroot \
+              -p"$MYSQL_ROOT_PASSWORD" \
+              --silent; then
+
+              echo "Payment MySQL is ready."
+              exit 0
+            fi
+
+            echo "MySQL is not ready yet. Attempt $i/30..."
+            sleep 2
+          done
+
+          echo "Payment MySQL failed to start."
+          docker logs payment-mysql
+          exit 1
+
+      # =========================
       # Create Payment test environment
       # =========================
       - name: Create Payment test environment
+        env:
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
+          PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
         run: |
           cat > .env.test <<EOF
           NODE_ENV=test
@@ -75,13 +105,13 @@ jobs:
 
           DB_HOST=127.0.0.1
           DB_PORT=3310
-          DB_USER=${{ secrets.PAYMENT_DB_USER }}
-          DB_PASSWORD=${{ secrets.PAYMENT_DB_PASSWORD }}
-          DB_NAME=${{ secrets.PAYMENT_DB_NAME }}
+          DB_USER=${PAYMENT_DB_USER}
+          DB_PASSWORD=${PAYMENT_DB_PASSWORD}
+          DB_NAME=${PAYMENT_DB_NAME}
           DB_CONNECTION_LIMIT=5
 
-          DB_ROOT_USER=${{ secrets.PAYMENT_DB_ROOT_USER }}
-          DB_ROOT_PASSWORD=${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          DB_ROOT_USER=${PAYMENT_DB_ROOT_USER}
+          DB_ROOT_PASSWORD=${PAYMENT_DB_ROOT_PASSWORD}
 
           RABBITMQ_URL=amqp://localhost:5672
           PAYMENT_PROVIDER=mock
