@@ -41,11 +41,55 @@ jobs:
         run: npm ci
 
       # =========================
+      # Validate GitHub Secrets
+      # =========================
+      - name: Validate Payment database secrets
+        env:
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
+          PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
+        run: |
+          missing=0
+
+          if [ -z "$PAYMENT_DB_ROOT_USER" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_ROOT_USER"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_ROOT_PASSWORD" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_ROOT_PASSWORD"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_USER" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_USER"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_PASSWORD" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_PASSWORD"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_NAME" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_NAME"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more required Payment database secrets are missing."
+            exit 1
+          fi
+
+          echo "All required Payment database secrets are available."
+
+      # =========================
       # Start Payment MySQL
       # =========================
       - name: Start Payment MySQL
         env:
-          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
           PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
           PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
           PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
@@ -100,22 +144,64 @@ jobs:
           PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
           PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
         run: |
-          cat > .env.test <<EOF
-          NODE_ENV=test
-          PORT=8005
+          printf '%s\n' \
+            "NODE_ENV=test" \
+            "PORT=8005" \
+            "DB_HOST=127.0.0.1" \
+            "DB_PORT=3310" \
+            "DB_USER=$PAYMENT_DB_USER" \
+            "DB_PASSWORD=$PAYMENT_DB_PASSWORD" \
+            "DB_NAME=$PAYMENT_DB_NAME" \
+            "DB_CONNECTION_LIMIT=10" \
+            "DB_ROOT_USER=$PAYMENT_DB_ROOT_USER" \
+            "DB_ROOT_PASSWORD=$PAYMENT_DB_ROOT_PASSWORD" \
+            "PAYMENT_PROVIDER=mock" \
+            > .env.test
 
-          DB_HOST=127.0.0.1
-          DB_PORT=3310
-          DB_USER=$PAYMENT_DB_USER
-          DB_PASSWORD=$PAYMENT_DB_PASSWORD
-          DB_NAME=$PAYMENT_DB_NAME
-          DB_CONNECTION_LIMIT=10
+          echo ".env.test created successfully."
 
-          DB_ROOT_USER=$PAYMENT_DB_ROOT_USER
-          DB_ROOT_PASSWORD=$PAYMENT_DB_ROOT_PASSWORD
+      # =========================
+      # Validate generated env
+      # =========================
+      - name: Validate Payment test environment
+        run: |
+          required_vars=(
+            NODE_ENV
+            PORT
+            DB_HOST
+            DB_PORT
+            DB_USER
+            DB_PASSWORD
+            DB_NAME
+            DB_CONNECTION_LIMIT
+            DB_ROOT_USER
+            DB_ROOT_PASSWORD
+            PAYMENT_PROVIDER
+          )
 
-          PAYMENT_PROVIDER=mock
-          EOF
+          for variable in "${required_vars[@]}"; do
+            if ! grep -q "^${variable}=" .env.test; then
+              echo "Missing variable in .env.test: ${variable}"
+              exit 1
+            fi
+          done
+
+          if grep -q '^DB_USER=$' .env.test; then
+            echo "DB_USER is empty in .env.test"
+            exit 1
+          fi
+
+          if grep -q '^DB_PASSWORD=$' .env.test; then
+            echo "DB_PASSWORD is empty in .env.test"
+            exit 1
+          fi
+
+          if grep -q '^DB_NAME=$' .env.test; then
+            echo "DB_NAME is empty in .env.test"
+            exit 1
+          fi
+
+          echo "Payment test environment is configured."
 
       # =========================
       # TypeScript check
@@ -133,9 +219,6 @@ jobs:
 
       # =========================
       # Integration tests
-      #
-      # test:integration already runs
-      # database migrations before Jest.
       # =========================
       - name: Run integration tests
         env:
