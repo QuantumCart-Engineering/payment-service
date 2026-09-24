@@ -16,6 +16,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
 
@@ -38,7 +39,7 @@ jobs:
       # Install dependencies
       # =========================
       - name: Install Payment dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       # =========================
       # Validate GitHub Secrets
@@ -109,6 +110,7 @@ jobs:
       # =========================
       - name: Wait for Payment MySQL
         env:
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
           PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
         run: |
           echo "Waiting for Payment MySQL..."
@@ -117,7 +119,7 @@ jobs:
             if docker exec payment-mysql \
               mysqladmin ping \
               -h 127.0.0.1 \
-              -uroot \
+              -u"$PAYMENT_DB_ROOT_USER" \
               -p"$PAYMENT_DB_ROOT_PASSWORD" \
               --silent; then
 
@@ -144,19 +146,20 @@ jobs:
           PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
           PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
         run: |
-          printf '%s\n' \
-            "NODE_ENV=test" \
-            "PORT=8005" \
-            "DB_HOST=127.0.0.1" \
-            "DB_PORT=3310" \
-            "DB_USER=$PAYMENT_DB_USER" \
-            "DB_PASSWORD=$PAYMENT_DB_PASSWORD" \
-            "DB_NAME=$PAYMENT_DB_NAME" \
-            "DB_CONNECTION_LIMIT=10" \
-            "DB_ROOT_USER=$PAYMENT_DB_ROOT_USER" \
-            "DB_ROOT_PASSWORD=$PAYMENT_DB_ROOT_PASSWORD" \
-            "PAYMENT_PROVIDER=mock" \
-            > .env.test
+          cat > .env.test <<EOF
+          NODE_ENV=test
+          PORT=8006
+          DB_HOST=127.0.0.1
+          DB_PORT=3310
+          DB_USER=$PAYMENT_DB_USER
+          DB_PASSWORD=$PAYMENT_DB_PASSWORD
+          DB_NAME=$PAYMENT_DB_NAME
+          DB_CONNECTION_LIMIT=5
+          DB_ROOT_USER=$PAYMENT_DB_ROOT_USER
+          DB_ROOT_PASSWORD=$PAYMENT_DB_ROOT_PASSWORD
+          RABBITMQ_URL=amqp://localhost:5672
+          PAYMENT_PROVIDER=mock
+          EOF
 
           echo ".env.test created successfully."
 
@@ -176,6 +179,7 @@ jobs:
             DB_CONNECTION_LIMIT
             DB_ROOT_USER
             DB_ROOT_PASSWORD
+            RABBITMQ_URL
             PAYMENT_PROVIDER
           )
 
@@ -198,6 +202,11 @@ jobs:
 
           if grep -q '^DB_NAME=$' .env.test; then
             echo "DB_NAME is empty in .env.test"
+            exit 1
+          fi
+
+          if grep -q '^DB_ROOT_PASSWORD=$' .env.test; then
+            echo "DB_ROOT_PASSWORD is empty in .env.test"
             exit 1
           fi
 
@@ -244,3 +253,11 @@ jobs:
       # =========================
       - name: Build Payment Docker image
         run: docker build -t quantumcart-payment-service:ci .
+
+      # =========================
+      # Cleanup
+      # =========================
+      - name: Cleanup Payment MySQL
+        if: always()
+        run: |
+          docker rm -f payment-mysql 2>/dev/null || true
