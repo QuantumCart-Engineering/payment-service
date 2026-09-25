@@ -1,5 +1,6 @@
 module.exports = {
     preset: "ts-jest",
+
     testEnvironment: "node",
 
     roots: [
@@ -12,8 +13,11 @@ module.exports = {
 
     moduleFileExtensions: [
         "ts",
-        "js"
+        "js",
+        "json"
     ],
+
+    clearMocks: true,
 
     collectCoverageFrom: [
         "src/**/*.ts",
@@ -22,8 +26,6 @@ module.exports = {
         "!src/docs/**",
         "!src/__tests__/**"
     ],
-
-    clearMocks: true,
 
     coverageDirectory: "coverage"
 };

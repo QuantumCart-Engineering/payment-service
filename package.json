@@ -5,15 +5,14 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "clean": "rm -rf dist",
-    "test": "jest",
-    "test:unit": "jest src/__tests__/unit",
-    "test:integration": "jest src/__tests__/integration --runInBand",
-    "test:coverage": "jest --coverage",
-    "migrate": "ts-node --transpile-only src/scripts/migrate.ts",
-    "migrate:test": "ts-node --transpile-only src/scripts/migrate-test.ts"
+        "build": "tsc",
+        "start": "node dist/server.js",
+        "clean": "rm -rf dist",
+        "test": "jest",
+        "test:unit": "jest src/__tests__/unit",
+        "test:integration": "node --env-file=.env.test -r ts-node/register/transpile-only src/scripts/migrate.ts && node --env-file=.env.test ./node_modules/jest/bin/jest.js src/__tests__/integration --runInBand",
+        "test:coverage": "jest --coverage",
+        "migrate": "ts-node --transpile-only src/scripts/migrate.ts"
   },
   "keywords": [],
   "author": "",

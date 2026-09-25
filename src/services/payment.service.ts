@@ -29,7 +29,8 @@ import {
 } from "../utils/request-hash.util";
 
 import {
-    IdempotencyConflictError
+    IdempotencyConflictError,
+    PaymentAlreadyExistsError
 } from "../utils/payment.errors";
 
 export class PaymentService {
@@ -57,8 +58,8 @@ export class PaymentService {
             createRequestHash(dto);
 
         /*
-         * First check whether this idempotency
-         * key has already been processed.
+         * Check whether the idempotency key
+         * was already processed.
          */
         const existingIdempotency =
             await this.paymentIdempotencyRepository
@@ -80,19 +81,15 @@ export class PaymentService {
         }
 
         /*
-         * Use a transaction so payment,
-         * attempt and idempotency record
-         * are persisted consistently.
+         * Payment, attempt and idempotency
+         * record are persisted atomically.
          */
         return withTransaction(
             async (connection) => {
 
                 /*
-                 * Re-check inside transaction.
-                 *
-                 * This protects against another request
-                 * creating the same idempotency key between
-                 * the first lookup and transaction start.
+                 * Re-check idempotency key inside
+                 * the transaction to handle race conditions.
                  */
                 const transactionIdempotency =
                     await this.paymentIdempotencyRepository
@@ -117,8 +114,8 @@ export class PaymentService {
                 }
 
                 /*
-                 * A payment can only exist once for
-                 * an order.
+                 * Only one payment is allowed
+                 * for an order.
                  */
                 const existingPayment =
                     await this.paymentRepository
@@ -128,13 +125,15 @@ export class PaymentService {
                         );
 
                 if (existingPayment) {
-                    throw new Error(
+                    throw new PaymentAlreadyExistsError(
                         "Payment already exists for this order"
                     );
                 }
 
                 const providerName =
-                    this.paymentProvider.constructor.name;
+                    this.paymentProvider
+                        .constructor
+                        .name;
 
                 /*
                  * Create payment.
@@ -161,8 +160,8 @@ export class PaymentService {
                     );
 
                 /*
-                 * Move both payment and attempt
-                 * into PROCESSING state.
+                 * Move payment and attempt
+                 * to PROCESSING.
                  */
                 await this.paymentRepository.updateStatus(
                     paymentId,
@@ -177,18 +176,18 @@ export class PaymentService {
                 );
 
                 /*
-                 * Call payment provider.
-                 *
-                 * For MVP this is MockPaymentProvider.
+                 * Process payment using provider.
                  */
                 const providerResponse =
-                    await this.paymentProvider.processPayment({
-                        paymentId,
-                        orderId: dto.orderId,
-                        amount: dto.amount,
-                        currency: "INR",
-                        paymentMethod: dto.paymentMethod
-                    });
+                    await this.paymentProvider
+                        .processPayment({
+                            paymentId,
+                            orderId: dto.orderId,
+                            amount: dto.amount,
+                            currency: "INR",
+                            paymentMethod:
+                                dto.paymentMethod
+                        });
 
                 /*
                  * Save provider response.
@@ -196,23 +195,29 @@ export class PaymentService {
                 await this.paymentRepository
                     .updateProviderDetails(
                         paymentId,
-                        providerResponse.providerPaymentId,
-                        providerResponse.failureCode,
-                        providerResponse.failureReason,
+                        providerResponse
+                            .providerPaymentId,
+                        providerResponse
+                            .failureCode,
+                        providerResponse
+                            .failureReason,
                         connection
                     );
 
                 await this.paymentAttemptRepository
                     .updateProviderDetails(
                         attemptId,
-                        providerResponse.providerPaymentId,
-                        providerResponse.failureCode,
-                        providerResponse.failureReason,
+                        providerResponse
+                            .providerPaymentId,
+                        providerResponse
+                            .failureCode,
+                        providerResponse
+                            .failureReason,
                         connection
                     );
 
                 /*
-                 * Update final payment state.
+                 * Determine final payment status.
                  */
                 const finalStatus =
                     providerResponse.success
@@ -233,6 +238,9 @@ export class PaymentService {
                         connection
                     );
 
+                /*
+                 * Retrieve final payment record.
+                 */
                 const payment =
                     await this.paymentRepository.findById(
                         paymentId,
@@ -245,20 +253,29 @@ export class PaymentService {
                     );
                 }
 
-                const response: PaymentResponseDto = {
-                    paymentId: payment.id,
-                    orderId: payment.orderId,
-                    amount: payment.amount,
-                    currency: payment.currency,
-                    paymentMethod: payment.paymentMethod,
-                    status: payment.status
+                const response:
+                    PaymentResponseDto = {
+                    paymentId:
+                        payment.id,
+
+                    orderId:
+                        payment.orderId,
+
+                    amount:
+                        payment.amount,
+
+                    currency:
+                        payment.currency,
+
+                    paymentMethod:
+                        payment.paymentMethod,
+
+                    status:
+                        payment.status
                 };
 
                 /*
-                 * Idempotency record is stored together
-                 * with payment state.
-                 *
-                 * 24-hour retention for MVP.
+                 * Store idempotency record for 24 hours.
                  */
                 const expiresAt =
                     new Date(

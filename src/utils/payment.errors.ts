@@ -1,17 +1,27 @@
-export class PaymentConflictError
+export class IdempotencyConflictError
     extends Error {
-    constructor(message: string) {
+
+    constructor(
+        message =
+            "Idempotency-Key was already used with a different request"
+    ) {
         super(message);
+
         this.name =
-            "PaymentConflictError";
+            "IdempotencyConflictError";
     }
 }
 
-export class IdempotencyConflictError
+export class PaymentAlreadyExistsError
     extends Error {
-    constructor(message: string) {
+
+    constructor(
+        message =
+            "Payment already exists for this order"
+    ) {
         super(message);
+
         this.name =
-            "IdempotencyConflictError";
+            "PaymentAlreadyExistsError";
     }
 }

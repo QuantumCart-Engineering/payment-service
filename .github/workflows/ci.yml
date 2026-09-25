@@ -1,0 +1,263 @@
+name: Payment Service CI
+
+on:
+  push:
+    branches:
+      - dev
+      - uat
+      - master
+
+  pull_request:
+    branches:
+      - dev
+      - uat
+      - master
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+
+      # =========================
+      # Checkout Payment Service
+      # =========================
+      - name: Checkout Payment Service
+        uses: actions/checkout@v4
+
+      # =========================
+      # Setup Node.js
+      # =========================
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # =========================
+      # Install dependencies
+      # =========================
+      - name: Install Payment dependencies
+        run: npm ci --no-audit --no-fund
+
+      # =========================
+      # Validate GitHub Secrets
+      # =========================
+      - name: Validate Payment database secrets
+        env:
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
+          PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
+        run: |
+          missing=0
+
+          if [ -z "$PAYMENT_DB_ROOT_USER" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_ROOT_USER"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_ROOT_PASSWORD" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_ROOT_PASSWORD"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_USER" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_USER"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_PASSWORD" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_PASSWORD"
+            missing=1
+          fi
+
+          if [ -z "$PAYMENT_DB_NAME" ]; then
+            echo "Missing GitHub Secret: PAYMENT_DB_NAME"
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more required Payment database secrets are missing."
+            exit 1
+          fi
+
+          echo "All required Payment database secrets are available."
+
+      # =========================
+      # Start Payment MySQL
+      # =========================
+      - name: Start Payment MySQL
+        env:
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
+          PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
+        run: |
+          docker run -d \
+            --name payment-mysql \
+            -p 3310:3306 \
+            -e MYSQL_ROOT_PASSWORD="$PAYMENT_DB_ROOT_PASSWORD" \
+            -e MYSQL_DATABASE="$PAYMENT_DB_NAME" \
+            -e MYSQL_USER="$PAYMENT_DB_USER" \
+            -e MYSQL_PASSWORD="$PAYMENT_DB_PASSWORD" \
+            mysql:8.4
+
+      # =========================
+      # Wait for Payment MySQL
+      # =========================
+      - name: Wait for Payment MySQL
+        env:
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+        run: |
+          echo "Waiting for Payment MySQL..."
+
+          for i in {1..30}; do
+            if docker exec payment-mysql \
+              mysqladmin ping \
+              -h 127.0.0.1 \
+              -u"$PAYMENT_DB_ROOT_USER" \
+              -p"$PAYMENT_DB_ROOT_PASSWORD" \
+              --silent; then
+
+              echo "Payment MySQL is ready."
+              exit 0
+            fi
+
+            echo "MySQL is not ready yet. Attempt $i/30"
+            sleep 2
+          done
+
+          echo "Payment MySQL failed to start."
+          docker logs payment-mysql
+          exit 1
+
+      # =========================
+      # Create Payment test environment
+      # =========================
+      - name: Create Payment test environment
+        env:
+          PAYMENT_DB_ROOT_USER: ${{ secrets.PAYMENT_DB_ROOT_USER }}
+          PAYMENT_DB_ROOT_PASSWORD: ${{ secrets.PAYMENT_DB_ROOT_PASSWORD }}
+          PAYMENT_DB_USER: ${{ secrets.PAYMENT_DB_USER }}
+          PAYMENT_DB_PASSWORD: ${{ secrets.PAYMENT_DB_PASSWORD }}
+          PAYMENT_DB_NAME: ${{ secrets.PAYMENT_DB_NAME }}
+        run: |
+          cat > .env.test <<EOF
+          NODE_ENV=test
+          PORT=8006
+          DB_HOST=127.0.0.1
+          DB_PORT=3310
+          DB_USER=$PAYMENT_DB_USER
+          DB_PASSWORD=$PAYMENT_DB_PASSWORD
+          DB_NAME=$PAYMENT_DB_NAME
+          DB_CONNECTION_LIMIT=5
+          DB_ROOT_USER=$PAYMENT_DB_ROOT_USER
+          DB_ROOT_PASSWORD=$PAYMENT_DB_ROOT_PASSWORD
+          RABBITMQ_URL=amqp://localhost:5672
+          PAYMENT_PROVIDER=mock
+          EOF
+
+          echo ".env.test created successfully."
+
+      # =========================
+      # Validate generated env
+      # =========================
+      - name: Validate Payment test environment
+        run: |
+          required_vars=(
+            NODE_ENV
+            PORT
+            DB_HOST
+            DB_PORT
+            DB_USER
+            DB_PASSWORD
+            DB_NAME
+            DB_CONNECTION_LIMIT
+            DB_ROOT_USER
+            DB_ROOT_PASSWORD
+            RABBITMQ_URL
+            PAYMENT_PROVIDER
+          )
+
+          for variable in "${required_vars[@]}"; do
+            if ! grep -q "^${variable}=" .env.test; then
+              echo "Missing variable in .env.test: ${variable}"
+              exit 1
+            fi
+          done
+
+          if grep -q '^DB_USER=$' .env.test; then
+            echo "DB_USER is empty in .env.test"
+            exit 1
+          fi
+
+          if grep -q '^DB_PASSWORD=$' .env.test; then
+            echo "DB_PASSWORD is empty in .env.test"
+            exit 1
+          fi
+
+          if grep -q '^DB_NAME=$' .env.test; then
+            echo "DB_NAME is empty in .env.test"
+            exit 1
+          fi
+
+          if grep -q '^DB_ROOT_PASSWORD=$' .env.test; then
+            echo "DB_ROOT_PASSWORD is empty in .env.test"
+            exit 1
+          fi
+
+          echo "Payment test environment is configured."
+
+      # =========================
+      # TypeScript check
+      # =========================
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      # =========================
+      # Unit tests
+      # =========================
+      - name: Run unit tests
+        env:
+          NODE_ENV: test
+        run: npm run test:unit -- --runInBand
+
+      # =========================
+      # Integration tests
+      # =========================
+      - name: Run integration tests
+        env:
+          NODE_ENV: test
+        run: npm run test:integration -- --runInBand
+
+      # =========================
+      # Test coverage
+      # =========================
+      - name: Run test coverage
+        env:
+          NODE_ENV: test
+        run: npm run test:coverage -- --runInBand
+
+      # =========================
+      # Build Payment Service
+      # =========================
+      - name: Build Payment Service
+        run: npm run build
+
+      # =========================
+      # Build Docker image
+      # =========================
+      - name: Build Payment Docker image
+        run: docker build -t quantumcart-payment-service:ci .
+
+      # =========================
+      # Cleanup
+      # =========================
+      - name: Cleanup Payment MySQL
+        if: always()
+        run: |
+          docker rm -f payment-mysql 2>/dev/null || true
