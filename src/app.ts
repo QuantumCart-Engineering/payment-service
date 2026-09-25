@@ -2,9 +2,11 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import swaggerUi from "swagger-ui-express";
 
 import routes from "./routes";
 import { errorMiddleware } from "./middleware/error.middleware";
+import { swaggerSpec } from "./docs/swagger";
 
 const app = express();
 
@@ -24,6 +26,12 @@ app.get(
             }
         });
     }
+);
+
+app.use(
+    "/api-docs",
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec)
 );
 
 app.use(routes);
