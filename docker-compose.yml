@@ -1,4 +1,5 @@
 services:
+
   payment-db:
     image: mysql:8.4
     container_name: quantumcart-payment-mysql
@@ -16,13 +17,84 @@ services:
     volumes:
       - payment_mysql_data:/var/lib/mysql
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${DB_ROOT_PASSWORD}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
     networks:
       - quantumcart-network
+
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: quantumcart/payment-service:local
+    container_name: quantumcart-payment-service
+
+    restart: unless-stopped
+
+    depends_on:
+      payment-db:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: production
+      PORT: 8006
+
+      DB_HOST: payment-db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_CONNECTION_LIMIT: ${DB_CONNECTION_LIMIT}
+
+      DB_ROOT_USER: ${DB_ROOT_USER}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+
+      RABBITMQ_URL: ${RABBITMQ_URL}
+
+      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER}
+
+    ports:
+      - "8006:8006"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8006/health"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - quantumcart-network
+
 
 networks:
   quantumcart-network:
     external: true
 
+
 volumes:
   payment_mysql_data:
-    name: payment-service_payment_mysql_data
