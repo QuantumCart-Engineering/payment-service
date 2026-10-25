@@ -25,6 +25,18 @@ import {
 } from "../providers/payment-provider.factory";
 
 import {
+    PaymentReportController
+} from "../controllers/payment-report.controller";
+
+import {
+    PaymentReportRepository
+} from "../repositories/payment-report.repository";
+
+import {
+    PaymentReportService
+} from "../services/payment-report.service";
+
+import {
     validateCreatePayment
 } from "../middleware/validate-payment.middleware";
 
@@ -58,6 +70,23 @@ const paymentController =
     new PaymentController(
         paymentService
     );
+
+const paymentReportController =
+    new PaymentReportController(
+        new PaymentReportService(
+            new PaymentReportRepository()
+        )
+    );
+
+router.get(
+    "/reports/summary",
+    paymentReportController.getSummary
+);
+
+router.get(
+    "/reports/timeseries",
+    paymentReportController.getTimeseries
+);
 
 router.post(
     "/",
